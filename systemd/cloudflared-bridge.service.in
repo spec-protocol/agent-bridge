@@ -1,0 +1,16 @@
+# ~/.config/systemd/user/cloudflared-bridge.service (gerado por setup-systemd.sh)
+# Quick tunnel: the URL changes on every restart — see docs/public/README.md
+# Named tunnel: troque ExecStart por cloudflared tunnel run NOME
+[Unit]
+Description=Cloudflare Tunnel for agent-bridge
+After=agent-bridge.service network-online.target
+Wants=agent-bridge.service
+
+[Service]
+Type=simple
+ExecStart=@CLOUDFLARED@ tunnel --no-autoupdate --url http://127.0.0.1:8787
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

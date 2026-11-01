@@ -1,0 +1,61 @@
+{
+  "name": "@spec-protocol/agent-bridge",
+  "version": "0.1.0",
+  "description": "Ponte MCP local entre o Grok Bot e IDEs na máquina do desenvolvedor.",
+  "license": "Apache-2.0",
+  "author": "ARJOS Tech",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/spec-protocol/agent-bridge.git"
+  },
+  "bugs": {
+    "url": "https://github.com/spec-protocol/agent-bridge/issues"
+  },
+  "homepage": "https://github.com/spec-protocol/agent-bridge#readme",
+  "main": "dist/index.js",
+  "bin": {
+    "agent-bridge": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "docs/public",
+    "skills",
+    "scripts",
+    "systemd",
+    ".env.example",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "test": "npm run build && node test/run-tests.mjs",
+    "check-public": "node scripts/check-public.mjs",
+    "prepublishOnly": "npm run build && node scripts/check-public.mjs",
+    "prepack": "npm run build && node scripts/check-public.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.5.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "chalk": "^5.4.1",
+    "commander": "^13.1.0",
+    "express": "^5.1.0",
+    "figlet": "^1.8.0",
+    "gradient-string": "^3.0.0",
+    "string-width": "^7.2.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/figlet": "^1.7.0",
+    "@types/node": "^20.19.0",
+    "typescript": "^5.9.0"
+  }
+}

@@ -1,0 +1,19 @@
+# ~/.config/systemd/user/agent-bridge.service (gerado por setup-systemd.sh)
+[Unit]
+Description=agent-bridge (MCP -> Cursor CLI)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=@INSTALL_DIR@
+ExecStartPre=@INSTALL_DIR@/scripts/lib/env-backup.sh
+EnvironmentFile=@INSTALL_DIR@/.env
+Environment=PATH=@HOME@/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=@NODE@ @INSTALL_DIR@/dist/index.js
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target
