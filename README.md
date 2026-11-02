@@ -85,8 +85,10 @@ Follow this guide and finish the connection: https://unpkg.com/@spec-protocol/ag
 | Tool | What it does | Access |
 | --- | --- | --- |
 | `list_repos` | Allowlist of repos and OpenCode availability | read |
-| `ask_cursor` | Cursor CLI in the repo (default `ask`) | read by default; write only with `mode=agent` **and** `ALLOW_WRITE=1` |
-| `start_ask_cursor` | Same as `ask_cursor`, as an async job | same as `ask_cursor` |
+| `list_cursor_sessions` | Local Cursor CLI chat sessions for allowed repos | read |
+| `read_cursor_session` | Text transcript of a Cursor session (JSONL when present) | read |
+| `ask_cursor` | Cursor CLI in the repo (default `ask`); optional `session_id` resumes `--resume` | read by default; write only with `mode=agent` **and** `ALLOW_WRITE=1` |
+| `start_ask_cursor` | Same as `ask_cursor`, as an async job; optional `session_id` | same as `ask_cursor` |
 | `ask_opencode` | OpenCode `plan` agent (optional) | read |
 | `start_ask_opencode` | Same as `ask_opencode`, as an async job | read |
 | `get_job` | Poll status/result of a job | read |

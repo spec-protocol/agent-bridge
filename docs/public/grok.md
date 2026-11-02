@@ -20,7 +20,7 @@ A pessoa colou a URL pública do MCP. Use essa URL. Não invente outra.
 
 ### Tools
 
-Recarregue as 12 tools: `list_repos`, `ask_cursor`, `start_ask_cursor`, `ask_opencode`, `start_ask_opencode`, `get_job`, `cancel_job`, `list_opencode_sessions`, `git_readonly`, `read_file`, `list_files`, `list_bridge_audit`.
+Recarregue as 14 tools: `list_repos`, `list_cursor_sessions`, `read_cursor_session`, `ask_cursor`, `start_ask_cursor`, `ask_opencode`, `start_ask_opencode`, `get_job`, `cancel_job`, `list_opencode_sessions`, `git_readonly`, `read_file`, `list_files`, `list_bridge_audit`.
 
 ### Primeira prova
 
@@ -45,7 +45,7 @@ The person pasted the public MCP URL. Use that URL. Do not invent another one.
 
 ### Tools
 
-Reload the 12 tools: `list_repos`, `ask_cursor`, `start_ask_cursor`, `ask_opencode`, `start_ask_opencode`, `get_job`, `cancel_job`, `list_opencode_sessions`, `git_readonly`, `read_file`, `list_files`, `list_bridge_audit`.
+Reload the 14 tools: `list_repos`, `list_cursor_sessions`, `read_cursor_session`, `ask_cursor`, `start_ask_cursor`, `ask_opencode`, `start_ask_opencode`, `get_job`, `cancel_job`, `list_opencode_sessions`, `git_readonly`, `read_file`, `list_files`, `list_bridge_audit`.
 
 ### First proof
 

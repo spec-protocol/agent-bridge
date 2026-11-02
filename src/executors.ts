@@ -8,6 +8,9 @@ import {
   parseOpencodeJsonOutput,
   type OpencodeStatus,
 } from "./opencode.js";
+import { sessionDirForRepo, validateCursorSessionId } from "./cursor-sessions.js";
+
+export { validateCursorSessionId } from "./cursor-sessions.js";
 
 export type BusySlot = { since: number; repo: string } | null;
 
@@ -18,6 +21,7 @@ export interface AskCursorParams {
   mode: "ask" | "agent";
   timeoutSec: number;
   model?: string;
+  sessionId?: string;
 }
 
 export interface AskOpencodeParams {
@@ -39,8 +43,16 @@ export interface ExecutorResult {
   promptChars: number;
 }
 
-export function buildAgentArgs(cfg: Config, prompt: string, dir: string, mode: "ask" | "agent", model?: string): string[] {
+export function buildAgentArgs(
+  cfg: Config,
+  prompt: string,
+  dir: string,
+  mode: "ask" | "agent",
+  model?: string,
+  sessionId?: string
+): string[] {
   const args = ["-p", "--output-format", "text", "--workspace", dir];
+  if (sessionId) args.push("--resume", sessionId);
   if (cfg.cursorTrust) args.push("--trust");
   if (mode === "ask") {
     args.push("--mode", "ask");
@@ -69,8 +81,27 @@ export async function executeAskCursor(
   params: AskCursorParams,
   hooks?: { onCancel?: (cancel: () => void) => void }
 ): Promise<ExecutorResult> {
-  const { prompt, repoName, repoDir, mode, timeoutSec, model } = params;
-  const args = buildAgentArgs(cfg, prompt, repoDir, mode, model);
+  const { prompt, repoName, repoDir, mode, timeoutSec, model, sessionId } = params;
+  const sessErr = validateCursorSessionId(sessionId);
+  if (sessErr) {
+    return {
+      text: sessErr,
+      isError: true,
+      truncated: false,
+      logFields: { tool: "ask_cursor", repo: repoName, error: "session_id" },
+      promptChars: prompt.length,
+    };
+  }
+  if (sessionId && !sessionDirForRepo(repoDir, sessionId)) {
+    return {
+      text: `Session "${sessionId}" was not found for this repository.`,
+      isError: true,
+      truncated: false,
+      logFields: { tool: "ask_cursor", repo: repoName, error: "session_not_in_repo" },
+      promptChars: prompt.length,
+    };
+  }
+  const args = buildAgentArgs(cfg, prompt, repoDir, mode, model, sessionId);
   const res = await runProcess(cfg.agentBin, args, {
     cwd: repoDir,
     timeoutMs: timeoutSec * 1000,
@@ -90,6 +121,7 @@ export async function executeAskCursor(
     timed_out: res.timedOut,
     truncated: res.stdoutTruncated,
   };
+  if (sessionId) logFields.cursor_session_id = sessionId;
   if (res.spawnError) {
     return {
       text: `Failed to run "${cfg.agentBin}": ${res.spawnError}. Is the Cursor CLI installed and on PATH (or set AGENT_BIN)?`,

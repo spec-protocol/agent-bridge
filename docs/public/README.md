@@ -90,8 +90,10 @@ Cole no Grok o bloco entre `--- PASTE INTO GROK ---` e `--- END ---`.
 | Tool | Função | Acesso |
 | --- | --- | --- |
 | `list_repos` | Allowlist de repositórios e se o OpenCode está disponível | read |
-| `ask_cursor` | Cursor CLI no repo. Padrão `ask` (leitura). `agent` só com `ALLOW_WRITE=1` | read por padrão; write com `mode=agent` e `ALLOW_WRITE=1` |
-| `start_ask_cursor` | A mesma execução em job, para tarefas longas | igual a `ask_cursor` |
+| `list_cursor_sessions` | Sessões locais do Cursor CLI nos repos permitidos | read |
+| `read_cursor_session` | Transcrição em texto de uma sessão Cursor (JSONL quando existir) | read |
+| `ask_cursor` | Cursor CLI no repo. Padrão `ask`. `session_id` opcional retoma com `--resume` | read por padrão; write com `mode=agent` e `ALLOW_WRITE=1` |
+| `start_ask_cursor` | A mesma execução em job; `session_id` opcional | igual a `ask_cursor` |
 | `ask_opencode` | OpenCode opcional, agente `plan` | read |
 | `start_ask_opencode` | `ask_opencode` em job | read |
 | `get_job` | Status/resultado de um job | read |
@@ -208,8 +210,10 @@ Paste into Grok the block between `--- PASTE INTO GROK ---` and `--- END ---`.
 | Tool | Role | Access |
 | --- | --- | --- |
 | `list_repos` | Repository allowlist and whether OpenCode is available | read |
-| `ask_cursor` | Cursor CLI in the repo. Default `ask` (read). `agent` only with `ALLOW_WRITE=1` | read by default; write with `mode=agent` and `ALLOW_WRITE=1` |
-| `start_ask_cursor` | The same run as a job, for long tasks | same as `ask_cursor` |
+| `list_cursor_sessions` | Local Cursor CLI chat sessions for allowed repos | read |
+| `read_cursor_session` | Text transcript of a Cursor session (JSONL when present) | read |
+| `ask_cursor` | Cursor CLI in the repo. Default `ask`. Optional `session_id` resumes with `--resume` | read by default; write with `mode=agent` and `ALLOW_WRITE=1` |
+| `start_ask_cursor` | The same run as a job; optional `session_id` | same as `ask_cursor` |
 | `ask_opencode` | Optional OpenCode, `plan` agent | read |
 | `start_ask_opencode` | `ask_opencode` as a job | read |
 | `get_job` | Job status/result | read |

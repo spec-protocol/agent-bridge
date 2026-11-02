@@ -15,6 +15,7 @@ export interface AuditEntry {
   response_chars?: number;
   allow_write?: boolean;
   opencode_session_id?: string;
+  cursor_session_id?: string;
   error?: string;
 }
 

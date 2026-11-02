@@ -1,9 +1,11 @@
 // Teste local: sobe o bridge com um `agent` falso no PATH e um repo git temporário.
 import { spawn, execFileSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
@@ -18,6 +20,7 @@ function reportedCwdIs(text, dir) {
 }
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
 const root = path.resolve(here, "..");
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "agent-bridge-test-"));
 const bin = path.join(tmp, "bin");
@@ -159,6 +162,139 @@ function clipboardSpawn(script) {
   check(
     "sem clipboard mostra o caminho e não o valor",
     missing.code === 1 && missing.calls.length === 3 && missing.errors.join(" ").includes(envPath) && missing.errors.join(" ").includes("BRIDGE_TOKEN") && !missing.shown.includes(token)
+  );
+}
+
+{
+  const {
+    listCursorSessions,
+    readCursorSession,
+    validateCursorSessionId,
+    projectSlug,
+  } = await import(path.join(root, "dist/cursor-sessions.js"));
+  const cursorTmp = path.join(tmp, "cursor-data");
+  const demoResolved = fs.realpathSync(repo);
+  const hash = crypto.createHash("md5").update(demoResolved).digest("hex");
+  const sid = "11111111-2222-3333-4444-555555555555";
+  const subSid = "22222222-2222-3333-4444-666666666666";
+  const noJsonlSid = "33333333-3333-3333-3333-777777777777";
+  const chatRoot = path.join(cursorTmp, "chats", hash);
+
+  const writeMeta = (id, ms) => {
+    fs.mkdirSync(path.join(chatRoot, id), { recursive: true });
+    fs.writeFileSync(
+      path.join(chatRoot, id, "meta.json"),
+      JSON.stringify({ cwd: demoResolved, createdAtMs: ms, updatedAtMs: ms, hasConversation: true })
+    );
+  };
+  writeMeta(sid, 1000);
+  writeMeta(subSid, 3000);
+  writeMeta(noJsonlSid, 2000);
+
+  const writeIndexDb = (id, indexObj) => {
+    const { DatabaseSync } = require("node:sqlite");
+    const dbPath = path.join(chatRoot, id, "store.db");
+    const db = new DatabaseSync(dbPath);
+    db.exec("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT); CREATE TABLE blobs (id TEXT, data BLOB);");
+    const hex = Buffer.from(JSON.stringify(indexObj), "utf8").toString("hex");
+    db.prepare("INSERT INTO meta (key, value) VALUES ('0', ?)").run(hex);
+    db.close();
+  };
+  writeIndexDb(sid, { agentId: sid, name: "Demo chat", mode: "ask", createdAt: 1000 });
+  writeIndexDb(subSid, { agentId: subSid, name: "Sub", mode: "ask", createdAt: 1000, subagentInfo: { typeName: "x" } });
+  writeIndexDb(noJsonlSid, { agentId: noJsonlSid, name: "No jsonl", mode: "ask", createdAt: 2000 });
+
+  const slug = projectSlug(demoResolved);
+  const jsonlDir = path.join(cursorTmp, "projects", slug, "agent-transcripts", sid);
+  fs.mkdirSync(jsonlDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(jsonlDir, `${sid}.jsonl`),
+    [
+      JSON.stringify({ role: "system", message: { content: [{ type: "text", text: "hidden system" }] } }),
+      JSON.stringify({ role: "user", message: { content: [{ type: "text", text: "hello" }] } }),
+      JSON.stringify({ role: "assistant", message: { content: [{ type: "text", text: "world" }] } }),
+    ].join("\n")
+  );
+
+  check(
+    "projectSlug igual ao CLI com ponto e underscore",
+    projectSlug("/Users/artur/.local/foo_bar") === "Users-artur-local-foo-bar"
+  );
+
+  const { buildAgentArgs, executeAskCursor } = await import(path.join(root, "dist/executors.js"));
+  const resumeArgv = buildAgentArgs(
+    { cursorTrust: true, allowWrite: false },
+    "continue",
+    demoResolved,
+    "ask",
+    undefined,
+    sid
+  );
+  check(
+    "buildAgentArgs session_id passa --resume",
+    resumeArgv.includes("--resume") &&
+      resumeArgv.includes(sid) &&
+      resumeArgv.indexOf("--resume") < resumeArgv.indexOf(sid)
+  );
+
+  const missingSid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+  const execMissing = await executeAskCursor(
+    { agentBin: path.join(bin, "agent"), cursorTrust: true, allowWrite: false, maxOutputBytes: 4096 },
+    {
+      prompt: "continue",
+      repoName: "demo",
+      repoDir: demoResolved,
+      mode: "ask",
+      timeoutSec: 5,
+      sessionId: missingSid,
+    }
+  );
+  check(
+    "executeAskCursor session_id ausente não chama o agent",
+    execMissing.isError === true &&
+      /not found for this repository/i.test(execMissing.text) &&
+      !execMissing.text.includes("FAKE_AGENT")
+  );
+
+  const listed = listCursorSessions(demoResolved, { limit: 10, cursorRoot: cursorTmp });
+  check(
+    "listCursorSessions ignora subagent",
+    listed.sessions.length === 2 &&
+      listed.sessions.some((s) => s.session_id === sid) &&
+      !listed.sessions.some((s) => s.session_id === subSid)
+  );
+  const listedTimeout = listCursorSessions(demoResolved, { limit: 10, cursorRoot: cursorTmp, listTimeoutMs: 0 });
+  check(
+    "listCursorSessions timeout devolve note",
+    listedTimeout.sessions.length === 0 &&
+      typeof listedTimeout.note === "string" &&
+      /incomplete/i.test(listedTimeout.note)
+  );
+  check("validateCursorSessionId rejeita ses_", validateCursorSessionId("ses_abc") !== null);
+
+  const readOk = readCursorSession(demoResolved, sid, { cursorRoot: cursorTmp, limit: 10 });
+  check(
+    "readCursorSession lê JSONL",
+    readOk.ok === true &&
+      readOk.lines.length === 2 &&
+      readOk.lines[0].includes("hello") &&
+      readOk.lines[1].includes("world") &&
+      !readOk.lines.some((line) => line.includes("hidden system"))
+  );
+
+  const readSub = readCursorSession(demoResolved, subSid, { cursorRoot: cursorTmp });
+  check(
+    "readCursorSession recusa subagent",
+    readSub.ok === false &&
+      "error" in readSub &&
+      /not found for this repository/i.test(readSub.error) &&
+      readSub.missing_transcript !== true
+  );
+
+  const readMissing = readCursorSession(demoResolved, noJsonlSid, { cursorRoot: cursorTmp });
+  check(
+    "readCursorSession sem JSONL",
+    readMissing.ok === false && readMissing.missing_transcript === true && readMissing.session_id === noJsonlSid
   );
 }
 
@@ -314,8 +450,8 @@ function clipboardSpawn(script) {
   check("skill não traz URL real", !/https:\/\/[a-z0-9-]+\.trycloudflare\.com/.test(skillText));
 
   const guide = fs.readFileSync(path.join(root, "docs", "public", "grok.md"), "utf8");
-  const tools = ["list_repos", "ask_cursor", "start_ask_cursor", "ask_opencode", "start_ask_opencode", "get_job", "cancel_job", "list_opencode_sessions", "git_readonly", "read_file", "list_files", "list_bridge_audit"];
-  check("guia tem as 12 tools e o campo protegido", tools.every((name) => guide.includes(name)) && guide.includes("campo protegido") && guide.includes("protected field") && guide.includes("~/.agent-bridge/home") && guide.includes("nunca no chat") && guide.includes("never in chat"));
+  const tools = ["list_repos", "list_cursor_sessions", "read_cursor_session", "ask_cursor", "start_ask_cursor", "ask_opencode", "start_ask_opencode", "get_job", "cancel_job", "list_opencode_sessions", "git_readonly", "read_file", "list_files", "list_bridge_audit"];
+  check("guia tem as 14 tools e o campo protegido", tools.every((name) => guide.includes(name)) && guide.includes("campo protegido") && guide.includes("protected field") && guide.includes("~/.agent-bridge/home") && guide.includes("nunca no chat") && guide.includes("never in chat"));
   check("guia não traz host real", !/https:\/\/[a-z0-9-]+\.trycloudflare\.com/.test(guide));
   check("guia manda agent-bridge token copy nas duas línguas", guide.split("agent-bridge token copy").length - 1 >= 2);
 
@@ -474,15 +610,15 @@ try {
   check("token correto -> initialize 200", r.status === 200 && initJson.result?.serverInfo?.name === "agent-bridge", JSON.stringify(initJson));
   r = await fetch(URL_, { method: "POST", headers: { ...hdr, Authorization: `Bearer ${TOKEN}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" }) });
   const tl = await r.json();
-  check("tools/list via HTTP cru", tl.result?.tools?.length === 12, JSON.stringify(tl).slice(0, 300));
+  check("tools/list via HTTP cru", tl.result?.tools?.length === 14, JSON.stringify(tl).slice(0, 300));
 
   // Cliente oficial do SDK
   const client = new Client({ name: "test", version: "0" });
   await client.connect(new StreamableHTTPClientTransport(new URL(URL_), { requestInit: { headers: { Authorization: `Bearer ${TOKEN}` } } }));
   const tools = (await client.listTools()).tools.map((t) => t.name).sort();
   const expectedTools =
-    "ask_cursor,ask_opencode,cancel_job,get_job,git_readonly,list_bridge_audit,list_files,list_opencode_sessions,list_repos,read_file,start_ask_cursor,start_ask_opencode";
-  check("tools/list (SDK) = 12 tools", tools.join(",") === expectedTools, tools.join(","));
+    "ask_cursor,ask_opencode,cancel_job,get_job,git_readonly,list_bridge_audit,list_cursor_sessions,list_files,list_opencode_sessions,list_repos,read_cursor_session,read_file,start_ask_cursor,start_ask_opencode";
+  check("tools/list (SDK) = 14 tools", tools.join(",") === expectedTools, tools.join(","));
 
   const lr = await client.callTool({ name: "list_repos", arguments: {} });
   check("list_repos retorna demo", lr.content[0].text.includes('"demo"') && lr.content[0].text.includes(repo));
@@ -525,6 +661,33 @@ try {
   check("ask_cursor: cwd = repo", reportedCwdIs(out, repo));
   check("ask_cursor: sem --force", !argv.includes("--force") && !argv.includes("--yolo"));
   check("ask_cursor: BRIDGE_TOKEN não vaza para o filho", out.includes("BRIDGE_TOKEN_VISIBLE=<unset>"));
+
+  const badSess = await client.callTool({ name: "ask_cursor", arguments: { prompt: "x", session_id: "ses_not_cursor" } });
+  check("ask_cursor session_id inválido rejeitado", badSess.isError === true);
+
+  const resumeId = "11111111-2222-3333-4444-555555555555";
+  const askResume = await client.callTool({
+    name: "ask_cursor",
+    arguments: { prompt: "continue chat", session_id: resumeId },
+  });
+  const outResume = askResume.content[0].text;
+  check(
+    "ask_cursor session_id fora do repo rejeitado",
+    askResume.isError === true && /not found for this repository/i.test(outResume) && !outResume.includes("FAKE_AGENT")
+  );
+
+  const startResume = await client.callTool({
+    name: "start_ask_cursor",
+    arguments: { prompt: "continue chat", session_id: resumeId },
+  });
+  const outStartResume = startResume.content[0].text;
+  check(
+    "start_ask_cursor session_id fora do repo rejeitado",
+    startResume.isError === true &&
+      /not found for this repository/i.test(outStartResume) &&
+      !outStartResume.includes("job_") &&
+      !outStartResume.includes("FAKE_AGENT")
+  );
 
   const w = await client.callTool({ name: "ask_cursor", arguments: { prompt: "edite", mode: "agent" } });
   check("ask_cursor mode=agent rejeitado sem ALLOW_WRITE", w.isError === true && /disabled/.test(w.content[0].text));

@@ -16,6 +16,12 @@ import {
   OPENCODE_HEADLESS_HINT,
   type OpencodeStatus,
 } from "./opencode.js";
+import {
+  listCursorSessions,
+  readCursorSession,
+  sessionDirForRepo,
+  CURSOR_SESSION_ID_RE,
+} from "./cursor-sessions.js";
 import { initAudit, auditRecord, readAuditTail } from "./audit.js";
 import { JobStore } from "./jobs.js";
 import {
@@ -23,6 +29,7 @@ import {
   executeAskCursor,
   executeAskOpencode,
   validateSessionId,
+  validateCursorSessionId,
   type BusySlot,
 } from "./executors.js";
 
@@ -67,12 +74,48 @@ function resolveRepo(name?: string): { name: string; dir: string } {
 }
 
 /** Builds the Cursor CLI argv. Exported for tests and documentation. */
-export function buildAgentArgs(prompt: string, dir: string, mode: "ask" | "agent", model?: string): string[] {
-  return buildAgentArgsWithCfg(cfg, prompt, dir, mode, model);
+export function buildAgentArgs(
+  prompt: string,
+  dir: string,
+  mode: "ask" | "agent",
+  model?: string,
+  sessionId?: string
+): string[] {
+  return buildAgentArgsWithCfg(cfg, prompt, dir, mode, model, sessionId);
 }
 
 let cursorBusy: BusySlot = null;
 let opencodeBusy: BusySlot = null;
+
+function resolveRepoForSessions(name?: string): { name: string; dir: string }[] {
+  if (name) {
+    return [resolveRepo(name)];
+  }
+  const out: { name: string; dir: string }[] = [];
+  for (const [repoName, dir] of cfg.repos) {
+    if (!fs.existsSync(dir)) continue;
+    out.push({ name: repoName, dir });
+  }
+  if (out.length === 0) {
+    throw new Error("No allowed repositories with existing directories. Use list_repos.");
+  }
+  return out;
+}
+
+function resolveRepoForSessionRead(sessionId: string, repoName?: string): { name: string; dir: string } {
+  if (repoName) {
+    const r = resolveRepo(repoName);
+    if (!sessionDirForRepo(r.dir, sessionId)) {
+      throw new Error(`Session "${sessionId}" was not found for repo "${r.name}".`);
+    }
+    return r;
+  }
+  for (const [name, dir] of cfg.repos) {
+    if (!fs.existsSync(dir)) continue;
+    if (sessionDirForRepo(dir, sessionId)) return { name, dir };
+  }
+  throw new Error(`Session "${sessionId}" was not found on the allowlist.`);
+}
 
 type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
 const text = (t: string, isError = false): ToolResult => ({ content: [{ type: "text", text: t }], ...(isError ? { isError } : {}) });
@@ -83,6 +126,11 @@ const askCursorSchema = {
   mode: z.enum(["ask", "agent"]).optional().describe("'ask' (default, read-only) or 'agent' (writes, requires ALLOW_WRITE=1)"),
   timeout_sec: z.number().int().positive().optional().describe("Timeout in seconds (default 600)"),
   model: z.string().regex(/^[A-Za-z0-9._:\/-]+$/).max(100).optional().describe("Cursor model (optional; see `agent models`)"),
+  session_id: z
+    .string()
+    .regex(CURSOR_SESSION_ID_RE)
+    .optional()
+    .describe("Existing Cursor CLI chat (UUID) to resume with --resume"),
 };
 
 const askOpencodeSchema = {
@@ -122,10 +170,23 @@ function auditToolDone(
       prompt_chars: res.promptChars,
       response_chars: res.text.length,
       allow_write: cfg.allowWrite,
-      opencode_session_id: res.sessionId,
+      opencode_session_id:
+        tool === "ask_opencode" || tool === "start_ask_opencode" ? res.sessionId : undefined,
+      cursor_session_id:
+        tool === "ask_cursor" || tool === "start_ask_cursor"
+          ? (res.logFields.cursor_session_id as string | undefined)
+          : undefined,
     },
     bodies
   );
+}
+
+function cursorSessionNotInRepo(repoDir: string, sessionId: string | undefined): string | null {
+  if (!sessionId) return null;
+  if (!sessionDirForRepo(repoDir, sessionId)) {
+    return `Session "${sessionId}" was not found for this repository.`;
+  }
+  return null;
 }
 
 async function runAskCursorSync(args: z.infer<z.ZodObject<typeof askCursorSchema>>): Promise<ToolResult> {
@@ -146,6 +207,16 @@ async function runAskCursorSync(args: z.infer<z.ZodObject<typeof askCursorSchema
     log({ tool: "ask_cursor", repo: r.name, mode: m, duration_ms: 0, exit_code: null, error: "busy" });
     return text(`Busy: a Cursor run is already in progress (repo ${cursorBusy.repo}, for ${secs}s). Try again when it finishes.`, true);
   }
+  const sessErr = validateCursorSessionId(args.session_id);
+  if (sessErr) {
+    log({ tool: "ask_cursor", repo: r.name, mode: m, duration_ms: 0, exit_code: null, error: "session_id" });
+    return text(sessErr, true);
+  }
+  const notInRepo = cursorSessionNotInRepo(r.dir, args.session_id);
+  if (notInRepo) {
+    log({ tool: "ask_cursor", repo: r.name, mode: m, duration_ms: 0, exit_code: null, error: "session_not_in_repo" });
+    return text(notInRepo, true);
+  }
   const timeoutSec = Math.min(args.timeout_sec ?? 600, cfg.maxTimeoutSec);
   cursorBusy = { since: Date.now(), repo: r.name };
   try {
@@ -156,6 +227,7 @@ async function runAskCursorSync(args: z.infer<z.ZodObject<typeof askCursorSchema
       mode: m,
       timeoutSec,
       model: args.model,
+      sessionId: args.session_id,
     });
     log(res.logFields);
     auditToolDone("ask_cursor", r.name, res, { prompt: args.prompt });
@@ -227,6 +299,14 @@ const jobStore = new JobStore(cfg, {
     if (m === "agent" && !cfg.allowWrite) {
       return { text: "Agent mode disabled (ALLOW_WRITE!=1)", isError: true };
     }
+    const sessErr = validateCursorSessionId(p.session_id);
+    if (sessErr) {
+      return { text: sessErr, isError: true };
+    }
+    const notInRepo = cursorSessionNotInRepo(r.dir, p.session_id);
+    if (notInRepo) {
+      return { text: notInRepo, isError: true };
+    }
     const timeoutSec = Math.min(p.timeout_sec ?? 600, cfg.maxTimeoutSec);
     cursorBusy = { since: Date.now(), repo: r.name };
     try {
@@ -237,6 +317,7 @@ const jobStore = new JobStore(cfg, {
         mode: m,
         timeoutSec,
         model: p.model,
+        sessionId: p.session_id,
       }, {
         onCancel: (fn) => { job.cancel = fn; },
       });
@@ -325,12 +406,86 @@ function buildServer(): McpServer {
   );
 
   server.registerTool(
+    "list_cursor_sessions",
+    {
+      title: "List Cursor CLI chat sessions",
+      description:
+        "Lists local Cursor CLI chat sessions for allowed repositories (from ~/.cursor/chats). " +
+        "Use session_id with read_cursor_session or ask_cursor --resume.",
+      inputSchema: {
+        repo: z.string().optional().describe("Repo on the allowlist (default: all allowed repos)"),
+        limit: z.number().int().positive().max(100).optional().describe("Maximum sessions per repo (default 20)"),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ repo, limit }) => {
+      const t0 = Date.now();
+      let repos: { name: string; dir: string }[];
+      try {
+        repos = resolveRepoForSessions(repo);
+      } catch (e) {
+        return text((e as Error).message, true);
+      }
+      const perRepo: Record<string, unknown>[] = [];
+      let note: string | undefined;
+      for (const r of repos) {
+        const listed = listCursorSessions(r.dir, { limit: limit ?? 20 });
+        if (listed.note && !note) note = listed.note;
+        perRepo.push({ repo: r.name, sessions: listed.sessions });
+      }
+      log({ tool: "list_cursor_sessions", repo: repo ?? null, duration_ms: Date.now() - t0, exit_code: 0 });
+      return text(JSON.stringify({ repos: perRepo, ...(note ? { note } : {}) }, null, 2));
+    }
+  );
+
+  server.registerTool(
+    "read_cursor_session",
+    {
+      title: "Read a Cursor CLI chat transcript",
+      description:
+        "Reads the text transcript of a Cursor CLI session from local JSONL when available. " +
+        "Does not decrypt store.db. Missing transcript still allows resume via ask_cursor session_id.",
+      inputSchema: {
+        session_id: z.string().regex(CURSOR_SESSION_ID_RE).describe("Cursor chat UUID from list_cursor_sessions"),
+        repo: z.string().optional().describe("Repo on the allowlist (default: search all allowed repos)"),
+        offset: z.number().int().min(0).optional().describe("Skip this many messages (default 0)"),
+        limit: z.number().int().positive().max(200).optional().describe("Maximum messages (default 50)"),
+        max_chars: z.number().int().positive().max(200_000).optional().describe("Maximum characters returned (default 32000)"),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ session_id, repo, offset, limit, max_chars }) => {
+      const t0 = Date.now();
+      let r: { name: string; dir: string };
+      try {
+        r = resolveRepoForSessionRead(session_id, repo);
+      } catch (e) {
+        log({ tool: "read_cursor_session", repo: repo ?? null, duration_ms: Date.now() - t0, exit_code: null, error: "not_found" });
+        return text((e as Error).message, true);
+      }
+      const read = readCursorSession(r.dir, session_id, { offset, limit, maxChars: max_chars });
+      if ("missing_transcript" in read && read.missing_transcript) {
+        log({ tool: "read_cursor_session", repo: r.name, duration_ms: Date.now() - t0, exit_code: 0 });
+        return text(JSON.stringify({ repo: r.name, ...read }, null, 2));
+      }
+      if (!read.ok) {
+        const errText = "error" in read ? read.error : "Failed to read session.";
+        log({ tool: "read_cursor_session", repo: r.name, duration_ms: Date.now() - t0, exit_code: null, error: "read" });
+        return text(errText, true);
+      }
+      log({ tool: "read_cursor_session", repo: r.name, duration_ms: Date.now() - t0, exit_code: 0 });
+      return text(JSON.stringify({ repo: r.name, ...read }, null, 2));
+    }
+  );
+
+  server.registerTool(
     "ask_cursor",
     {
       title: "Ask the Cursor CLI",
       description:
         "Runs the Cursor CLI (agent -p) headless in the chosen local repository and returns the answer as text. " +
         "Mode 'ask' (default) is read-only. Mode 'agent' (may edit files) works only if the bridge was started with ALLOW_WRITE=1. " +
+        "Optional session_id resumes an existing chat (--resume). " +
         "For long tasks (>~2 min on Grok), use start_ask_cursor + get_job. Only one run at a time.",
       inputSchema: askCursorSchema,
       annotations: { readOnlyHint: !cfg.allowWrite, openWorldHint: true },
@@ -358,6 +513,14 @@ function buildServer(): McpServer {
       }
       if (m === "agent" && !cfg.allowWrite) {
         return text("Mode 'agent' disabled (ALLOW_WRITE!=1).", true);
+      }
+      const sessErr = validateCursorSessionId(args.session_id);
+      if (sessErr) {
+        return text(sessErr, true);
+      }
+      const notInRepo = cursorSessionNotInRepo(r.dir, args.session_id);
+      if (notInRepo) {
+        return text(notInRepo, true);
       }
       const { job_id, status } = jobStore.start("ask_cursor", r.name, args);
       return text(
