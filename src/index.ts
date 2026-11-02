@@ -26,7 +26,7 @@ import {
   type BusySlot,
 } from "./executors.js";
 
-const MCP_VERSION = "0.1.0";
+const MCP_VERSION = "0.1.1";
 
 let cfg: Config;
 try {

@@ -51,7 +51,7 @@ print_grok_block() {
   echo "--- PASTE INTO GROK ---"
   echo "Connect the Streamable HTTP MCP at this URL: ${mcp_url}"
   echo "Follow this guide and finish the connection: ${guide}"
-  echo "The BRIDGE_TOKEN did not change. Paste it only in the protected field."
+  echo "The BRIDGE_TOKEN did not change. Run agent-bridge token copy and paste it only in the protected field."
   echo "--- END ---"
 }
 

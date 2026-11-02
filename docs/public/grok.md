@@ -16,7 +16,7 @@ A pessoa colou a URL pública do MCP. Use essa URL. Não invente outra.
 - Transporte: Streamable HTTP.
 - URL: a que veio na mensagem, no formato `https://…/mcp`.
 - O Bearer fica só no campo protegido. Não peça o `BRIDGE_TOKEN` no chat e não leia o `.env`.
-- A pessoa copia o `BRIDGE_TOKEN` do `.env` da instalação indicada por `~/.agent-bridge/home` e cola só no campo protegido, nunca no chat.
+- A pessoa roda `agent-bridge token copy` no terminal da máquina e cola só no campo protegido, nunca no chat. O comando lê o `.env` indicado por `~/.agent-bridge/home`.
 
 ### Tools
 
@@ -41,7 +41,7 @@ The person pasted the public MCP URL. Use that URL. Do not invent another one.
 - Transport: Streamable HTTP.
 - URL: the one in the message, in the form `https://…/mcp`.
 - The Bearer token belongs only in the protected field. Do not ask for `BRIDGE_TOKEN` in chat and do not read `.env`.
-- The person copies `BRIDGE_TOKEN` from the installation `.env` indicated by `~/.agent-bridge/home` and pastes it only in the protected field, never in chat.
+- The person runs `agent-bridge token copy` on the machine and pastes it only in the protected field, never in chat. The command reads the `.env` indicated by `~/.agent-bridge/home`.
 
 ### Tools
 

@@ -21,7 +21,7 @@ O servidor escuta só em `127.0.0.1` (porta padrão `8787`). Toda chamada MCP ex
 2. No projeto, `agent-bridge init`. No chat do Cursor, `/agent-bridge`. Copie o output.
 3. Crie o Grok Bot e cole só esse output.
 
-O output traz a URL do MCP e o link do guia. O Grok abre o guia e conclui a conexão. O token não vem no texto: vai só no campo protegido.
+O output traz a URL do MCP e o link do guia. O Grok abre o guia e conclui a conexão. O token não vem no texto: vai só no campo protegido. Na máquina, `agent-bridge token copy` copia o token.
 
 O Cursor CLI (`agent`) é obrigatório. O OpenCode é opcional.
 
@@ -123,7 +123,7 @@ The server listens only on `127.0.0.1` (default port `8787`). Every MCP call req
 2. In the project, `agent-bridge init`. In the Cursor chat, `/agent-bridge`. Copy the output.
 3. Create the Grok Bot and paste only that output.
 
-The output carries the MCP URL and the guide link. Grok opens the guide and finishes the connection. The token is not in the text: it goes only in the protected field.
+The output carries the MCP URL and the guide link. Grok opens the guide and finishes the connection. The token is not in the text: it goes only in the protected field. On the machine, `agent-bridge token copy` copies the token.
 
 The Cursor CLI (`agent`) is required. OpenCode is optional.
 

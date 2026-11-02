@@ -5,6 +5,7 @@ import chalk from "chalk";
 import { printBanner } from "./banner.js";
 import { runConfig } from "./commands/config.js";
 import { runInit } from "./commands/init.js";
+import { runCopyToken } from "./commands/token.js";
 
 const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
 
@@ -44,13 +45,26 @@ program
     await import("./index.js");
   });
 
+program
+  .command("token")
+  .description("Works with BRIDGE_TOKEN without printing it")
+  .command("copy")
+  .description("Copies BRIDGE_TOKEN to the clipboard")
+  .action(async () => {
+    try {
+      await runCopyToken();
+    } catch (err) {
+      exitWithError(err);
+    }
+  });
+
 function exitWithError(err: unknown): never {
   const message = err instanceof Error ? err.message : String(err);
   console.error(chalk.red(`✗ ${message}`));
   process.exit(1);
 }
 
-const ALL_COMMANDS = ["init", "config", "serve"];
+const ALL_COMMANDS = ["init", "config", "serve", "token"];
 const args = process.argv.slice(2);
 const hasSubcommand = args.length > 0 && !args[0].startsWith("-") && ALL_COMMANDS.includes(args[0]);
 

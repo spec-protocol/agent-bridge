@@ -83,6 +83,85 @@ const { addRepo, formatRepos, parseRepos, suggestRepoName, upsertEnvKey } = awai
 const { machOAcceptable, resolveCursorAgent, resolveOpencodeBin } = await import(path.join(root, "dist/prereqs.js"));
 const { bootstrapEnvContent, homePointerExists, prepareMachine, skillDest } = await import(path.join(root, "dist/machine-setup.js"));
 const { envBackupPath, restoreEnvBackup, writeEnvFile } = await import(path.join(root, "dist/install-home.js"));
+const { copyTokenToClipboard } = await import(path.join(root, "dist/commands/token.js"));
+
+function clipboardSpawn(script) {
+  const calls = [];
+  let index = 0;
+  const spawn = (command, args) => {
+    const step = script[index++] ?? { error: "ENOENT" };
+    const written = [];
+    const listeners = { error: [], exit: [] };
+    const child = {
+      stdin: {
+        write(data) { written.push(String(data)); },
+        end() {},
+      },
+      on(event, cb) {
+        listeners[event].push(cb);
+      },
+    };
+    calls.push({ command, args: args.slice(), written });
+    queueMicrotask(() => {
+      if (step.error) {
+        const err = new Error(step.error);
+        err.code = step.error;
+        for (const cb of listeners.error) cb(err);
+        return;
+      }
+      for (const cb of listeners.exit) cb(step.code ?? 0);
+    });
+    return child;
+  };
+  return { spawn, calls };
+}
+
+{
+  const token = "a".repeat(64);
+  const envPath = "/opt/bridge/.env";
+  const run = async (platform, script) => {
+    const harness = clipboardSpawn(script);
+    const logs = [];
+    const errors = [];
+    const code = await copyTokenToClipboard({
+      platform,
+      token,
+      envPath,
+      spawn: harness.spawn,
+      log: (message) => logs.push(message),
+      error: (message) => errors.push(message),
+    });
+    const shown = `${logs.join("\n")}\n${errors.join("\n")}`;
+    return { code, shown, calls: harness.calls, logs, errors };
+  };
+
+  const mac = await run("darwin", [{ code: 0 }]);
+  check(
+    "macOS copia com pbcopy e não imprime o token",
+    mac.code === 0 && mac.calls.length === 1 && mac.calls[0].command === "pbcopy" && mac.calls[0].args.length === 0 && mac.calls[0].written.join("") === token && !mac.shown.includes(token) && mac.logs[0].includes("protected field")
+  );
+  const win = await run("win32", [{ code: 0 }]);
+  check(
+    "Windows copia com clip e não imprime o token",
+    win.code === 0 && win.calls.length === 1 && win.calls[0].command === "clip" && win.calls[0].written.join("") === token && !win.shown.includes(token)
+  );
+  const linux = await run("linux", [{ code: 0 }]);
+  check(
+    "Linux copia com wl-copy e não imprime o token",
+    linux.code === 0 && linux.calls.length === 1 && linux.calls[0].command === "wl-copy" && linux.calls[0].written.join("") === token && !linux.shown.includes(token)
+  );
+  const fallback = await run("linux", [{ error: "ENOENT" }, { code: 0 }]);
+  check(
+    "Linux cai de wl-copy ausente para xclip",
+    fallback.code === 0 && fallback.calls.length === 2 && fallback.calls[0].command === "wl-copy" && fallback.calls[1].command === "xclip" && fallback.calls[1].args.join(" ") === "-selection clipboard" && fallback.calls[1].written.join("") === token && !fallback.shown.includes(token)
+  );
+  const missing = await run("linux", [{ error: "ENOENT" }, { error: "ENOENT" }, { error: "ENOENT" }]);
+  check(
+    "sem clipboard mostra o caminho e não o valor",
+    missing.code === 1 && missing.calls.length === 3 && missing.errors.join(" ").includes(envPath) && missing.errors.join(" ").includes("BRIDGE_TOKEN") && !missing.shown.includes(token)
+  );
+}
+
 {
   check("machO aceita script", machOAcceptable("Bourne-Again shell script text executable", "arm64"));
   check("machO aceita universal", machOAcceptable("Mach-O universal binary", "x86_64"));
@@ -238,6 +317,7 @@ const { envBackupPath, restoreEnvBackup, writeEnvFile } = await import(path.join
   const tools = ["list_repos", "ask_cursor", "start_ask_cursor", "ask_opencode", "start_ask_opencode", "get_job", "cancel_job", "list_opencode_sessions", "git_readonly", "read_file", "list_files", "list_bridge_audit"];
   check("guia tem as 12 tools e o campo protegido", tools.every((name) => guide.includes(name)) && guide.includes("campo protegido") && guide.includes("protected field") && guide.includes("~/.agent-bridge/home") && guide.includes("nunca no chat") && guide.includes("never in chat"));
   check("guia não traz host real", !/https:\/\/[a-z0-9-]+\.trycloudflare\.com/.test(guide));
+  check("guia manda agent-bridge token copy nas duas línguas", guide.split("agent-bridge token copy").length - 1 >= 2);
 
   for (const readme of ["README.md", path.join("docs", "public", "README.md")]) {
     const text = fs.readFileSync(path.join(root, readme), "utf8");
@@ -261,6 +341,7 @@ const { envBackupPath, restoreEnvBackup, writeEnvFile } = await import(path.join
     reconnect.includes("unpkg.com/@spec-protocol/agent-bridge@") &&
       reconnect.includes("docs/public/grok.md") &&
       reconnect.includes("did not change") &&
+      reconnect.includes("agent-bridge token copy") &&
       !reconnect.includes("recarregue as 12 tools")
   );
 

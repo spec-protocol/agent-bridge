@@ -33,7 +33,7 @@ O guia que o Grok executa: [docs/public/grok.md](docs/public/grok.md). O link `h
 
 Instalação no Linux (`--systemd`) e no macOS (`--launchd`), CLI, túnel e as 12 tools: [docs/public/README.md](docs/public/README.md).
 
-O Bearer fica só no campo protegido.
+O Bearer fica só no campo protegido. Na máquina, `agent-bridge token copy` copia o token.
 
 ---
 
@@ -53,4 +53,4 @@ The guide Grok runs: [docs/public/grok.md](docs/public/grok.md). The link `https
 
 Linux (`--systemd`) and macOS (`--launchd`) install, CLI, tunnel, and the 12 tools: [docs/public/README.md](docs/public/README.md).
 
-The Bearer token belongs only in the protected field.
+The Bearer token belongs only in the protected field. On the machine, `agent-bridge token copy` copies the token.
