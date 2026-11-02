@@ -24,7 +24,7 @@ Recarregue as 12 tools: `list_repos`, `ask_cursor`, `start_ask_cursor`, `ask_ope
 
 ### Primeira prova
 
-Chame `list_repos` e um `git_readonly`. `ask_cursor` depois. `ask_opencode` só se `opencode.available` for verdadeiro.
+Chame `list_repos` e um `git_readonly`. `ask_cursor` depois. `ask_opencode` só se `opencode.available` for verdadeiro. Se a razão for “binary is not executable”, a pessoa precisa de `chmod +x` ou reinstalar o OpenCode.
 
 ### Túnel novo
 
@@ -49,7 +49,7 @@ Reload the 12 tools: `list_repos`, `ask_cursor`, `start_ask_cursor`, `ask_openco
 
 ### First proof
 
-Call `list_repos` and one `git_readonly`. `ask_cursor` later. `ask_opencode` only if `opencode.available` is true.
+Call `list_repos` and one `git_readonly`. `ask_cursor` later. `ask_opencode` only if `opencode.available` is true. If the reason is “binary is not executable”, the person needs `chmod +x` or to reinstall OpenCode.
 
 ### New tunnel
 

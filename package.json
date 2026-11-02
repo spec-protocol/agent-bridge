@@ -1,6 +1,6 @@
 {
   "name": "@spec-protocol/agent-bridge",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Ponte MCP local entre o Grok Bot e IDEs na máquina do desenvolvedor.",
   "license": "Apache-2.0",
   "author": "ARJOS Tech",
@@ -28,6 +28,7 @@
     "systemd",
     ".env.example",
     "README.md",
+    "README.pt-BR.md",
     "LICENSE"
   ],
   "scripts": {

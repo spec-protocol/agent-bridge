@@ -138,7 +138,7 @@ function clipboardSpawn(script) {
   const mac = await run("darwin", [{ code: 0 }]);
   check(
     "macOS copia com pbcopy e não imprime o token",
-    mac.code === 0 && mac.calls.length === 1 && mac.calls[0].command === "pbcopy" && mac.calls[0].args.length === 0 && mac.calls[0].written.join("") === token && !mac.shown.includes(token) && mac.logs[0].includes("protected field")
+    mac.code === 0 && mac.calls.length === 1 && mac.calls[0].command === "pbcopy" && mac.calls[0].args.length === 0 && mac.calls[0].written.join("") === token && !mac.shown.includes(token) && mac.logs[0].includes("protected field") && mac.logs[0].includes("Clear the clipboard")
   );
   const win = await run("win32", [{ code: 0 }]);
   check(
@@ -319,17 +319,59 @@ function clipboardSpawn(script) {
   check("guia não traz host real", !/https:\/\/[a-z0-9-]+\.trycloudflare\.com/.test(guide));
   check("guia manda agent-bridge token copy nas duas línguas", guide.split("agent-bridge token copy").length - 1 >= 2);
 
-  for (const readme of ["README.md", path.join("docs", "public", "README.md")]) {
-    const text = fs.readFileSync(path.join(root, readme), "utf8");
+  {
+    const en = fs.readFileSync(path.join(root, "README.md"), "utf8");
     check(
-      `${readme} descreve os três passos`,
-      text.includes("npm install -g @spec-protocol/agent-bridge") &&
-        text.includes("agent-bridge init") &&
-        text.includes("/agent-bridge") &&
-        text.includes("cole só esse output") &&
-        text.includes("paste only that output") &&
-        text.includes("npm publish") &&
-        !text.includes("cole a URL deste repositório")
+      "README.md descreve os passos em EN e linka README.pt-BR.md",
+      en.includes("npm install -g @spec-protocol/agent-bridge") &&
+        en.includes("agent-bridge init") &&
+        en.includes("/agent-bridge") &&
+        en.includes("paste only that") &&
+        en.includes("README.pt-BR.md") &&
+        !en.includes("npm publish") &&
+        !en.includes("cole a URL deste repositório")
+    );
+  }
+  {
+    const pt = fs.readFileSync(path.join(root, "README.pt-BR.md"), "utf8");
+    check(
+      "README.pt-BR.md descreve os passos em PT",
+      pt.includes("npm install -g @spec-protocol/agent-bridge") &&
+        pt.includes("agent-bridge init") &&
+        pt.includes("/agent-bridge") &&
+        pt.includes("cole **só** esse output") &&
+        pt.includes("README.md") &&
+        !pt.includes("cole a URL deste repositório")
+    );
+  }
+  {
+    const pub = fs.readFileSync(path.join(root, "docs", "public", "README.md"), "utf8");
+    check(
+      "docs/public/README.md bilingue descreve os três passos",
+      pub.includes("npm install -g @spec-protocol/agent-bridge") &&
+        pub.includes("agent-bridge init") &&
+        pub.includes("/agent-bridge") &&
+        pub.includes("cole só esse output") &&
+        pub.includes("paste only that output") &&
+        !pub.includes("npm publish") &&
+        !pub.includes("cole a URL deste repositório")
+    );
+  }
+
+  {
+    const r = spawn(process.execPath, [path.join(root, "dist/cli.js"), "token"], {
+      env: { ...process.env },
+    });
+    let out = "";
+    r.stdout.on("data", (d) => { out += d; });
+    r.stderr.on("data", (d) => { out += d; });
+    const code = await new Promise((res) => r.on("close", res));
+    check(
+      "cli token sem subcomando: help com copy, exit 0, sem token",
+      code === 0 &&
+        /\bcopy\b/i.test(out) &&
+        !/BRIDGE_TOKEN\s*=\s*\S{16,}/.test(out) &&
+        !/[a-f0-9]{64}/i.test(out)
     );
   }
 
@@ -395,6 +437,8 @@ const testBridgeEnv = (extra) => {
   const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, AGENT_BIN: fakeAgent, ...extra };
   delete env.CURSOR_MODEL;
   delete env.CURSOR_SANDBOX;
+  // Do not inherit a developer shell ALLOW_WRITE=1 into read-only cases.
+  if (!Object.prototype.hasOwnProperty.call(extra, "ALLOW_WRITE")) delete env.ALLOW_WRITE;
   return env;
 };
 const srv = spawn(process.execPath, [path.join(root, "dist/index.js")], {

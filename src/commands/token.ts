@@ -20,7 +20,7 @@ export type ClipboardSpawn = (
 ) => ClipboardProcess;
 
 export const COPIED_MESSAGE =
-  "Copied. Paste it in the protected field of Grok Bot. Do not paste it in the chat.";
+  "Copied. Paste it in the protected field of Grok Bot. Do not paste it in the chat. Clear the clipboard after pasting.";
 
 export function clipboardTools(platform: NodeJS.Platform): ClipboardTool[] {
   if (platform === "darwin") return [{ command: "pbcopy", args: [] }];

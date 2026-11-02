@@ -45,9 +45,16 @@ program
     await import("./index.js");
   });
 
-program
+const tokenCmd = program
   .command("token")
-  .description("Works with BRIDGE_TOKEN without printing it")
+  .description("Works with BRIDGE_TOKEN without printing it");
+
+// Parent with no subcommand: print help (lists `copy`) and exit 0 — advisory, not an error.
+tokenCmd.action(() => {
+  tokenCmd.help();
+});
+
+tokenCmd
   .command("copy")
   .description("Copies BRIDGE_TOKEN to the clipboard")
   .action(async () => {
